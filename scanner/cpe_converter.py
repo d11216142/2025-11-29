@@ -166,7 +166,8 @@ class CPEConverter:
                 if distro_id in self.VENDOR_MAPPINGS:
                     vendor = self.VENDOR_MAPPINGS[distro_id]
                 else:
-                    vendor = distro_id
+                    # Use sanitization for consistent formatting
+                    vendor = self._sanitize_cpe_value(distro_id)
         elif system == 'windows':
             version = os_info.get('release', '*')
             edition = os_info.get('win_edition', '*')

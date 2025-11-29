@@ -41,7 +41,13 @@ class SoftwareScanner:
             if result.returncode == 0:
                 for line in result.stdout.strip().split('\n'):
                     parts = line.split('\t')
-                    if len(parts) >= 2 and 'installed' in parts[-1] if len(parts) > 2 else True:
+                    if len(parts) < 2:
+                        continue
+                    # Check if package is installed (for dpkg, status is in the third column)
+                    is_installed = True
+                    if len(parts) > 2:
+                        is_installed = 'installed' in parts[-1]
+                    if is_installed:
                         software.append({
                             'name': parts[0],
                             'version': parts[1] if len(parts) > 1 else 'Unknown',
@@ -117,12 +123,26 @@ class SoftwareScanner:
         software = []
         
         try:
-            # Use PowerShell to get installed programs
+            # Use PowerShell to get installed programs with error handling
+            # Try-Catch handles permission issues when accessing registry
             ps_script = '''
-            Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* |
-            Select-Object DisplayName, DisplayVersion, Publisher |
-            Where-Object {$_.DisplayName -ne $null} |
-            ForEach-Object { "$($_.DisplayName)`t$($_.DisplayVersion)`t$($_.Publisher)" }
+            $ErrorActionPreference = "SilentlyContinue"
+            try {
+                Get-ItemProperty HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* -ErrorAction SilentlyContinue |
+                Select-Object DisplayName, DisplayVersion, Publisher |
+                Where-Object {$_.DisplayName -ne $null} |
+                ForEach-Object { "$($_.DisplayName)`t$($_.DisplayVersion)`t$($_.Publisher)" }
+            } catch {
+                # Silently handle permission errors
+            }
+            try {
+                Get-ItemProperty HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* -ErrorAction SilentlyContinue |
+                Select-Object DisplayName, DisplayVersion, Publisher |
+                Where-Object {$_.DisplayName -ne $null} |
+                ForEach-Object { "$($_.DisplayName)`t$($_.DisplayVersion)`t$($_.Publisher)" }
+            } catch {
+                # Silently handle permission errors
+            }
             '''
             
             result = subprocess.run(
@@ -140,7 +160,7 @@ class SoftwareScanner:
                             'vendor': parts[2] if len(parts) > 2 else 'Unknown',
                             'type': 'windows',
                         })
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        except (FileNotFoundError, subprocess.TimeoutExpired, PermissionError):
             software.append({'error': 'Unable to scan Windows software'})
         
         return software
