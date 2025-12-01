@@ -274,7 +274,188 @@ class CPEConverter:
                     'cpe': cpe,
                 })
         
+        # GPU/Display Adapters
+        gpus = hardware_info.get('gpu', [])
+        for gpu in gpus:
+            if 'error' not in gpu:
+                gpu_name = gpu.get('name', 'Unknown GPU')
+                vendor = self._detect_hardware_vendor(gpu_name)
+                version = gpu.get('driver_version', '*')
+                
+                cpe = self._generate_cpe(
+                    part='h',
+                    vendor=vendor,
+                    product=self._sanitize_cpe_value(gpu_name),
+                    version=version,
+                )
+                
+                cpe_list.append({
+                    'type': 'Hardware - GPU',
+                    'name': gpu_name,
+                    'vendor': vendor,
+                    'product': gpu_name,
+                    'version': version,
+                    'cpe': cpe,
+                })
+        
+        # Audio Devices
+        audio_devices = hardware_info.get('audio', [])
+        for audio in audio_devices:
+            if 'error' not in audio:
+                audio_name = audio.get('name', 'Unknown Audio Device')
+                vendor = self._detect_hardware_vendor(audio_name)
+                
+                cpe = self._generate_cpe(
+                    part='h',
+                    vendor=vendor,
+                    product=self._sanitize_cpe_value(audio_name),
+                    version='*',
+                )
+                
+                cpe_list.append({
+                    'type': 'Hardware - Audio',
+                    'name': audio_name,
+                    'vendor': vendor,
+                    'product': audio_name,
+                    'version': '*',
+                    'cpe': cpe,
+                })
+        
+        # USB Devices
+        usb_devices = hardware_info.get('usb', [])
+        for usb in usb_devices:
+            if 'error' not in usb:
+                usb_name = usb.get('name', 'Unknown USB Device')
+                vendor = self._detect_hardware_vendor(usb_name)
+                device_type = usb.get('type', 'USB Device')
+                
+                cpe = self._generate_cpe(
+                    part='h',
+                    vendor=vendor,
+                    product=self._sanitize_cpe_value(usb_name),
+                    version='*',
+                )
+                
+                cpe_list.append({
+                    'type': f'Hardware - {device_type}',
+                    'name': usb_name,
+                    'vendor': vendor,
+                    'product': usb_name,
+                    'version': '*',
+                    'cpe': cpe,
+                })
+        
+        # PCI Devices
+        pci_devices = hardware_info.get('pci', [])
+        for pci in pci_devices:
+            if 'error' not in pci:
+                pci_name = pci.get('name', 'Unknown PCI Device')
+                vendor = self._detect_hardware_vendor(pci_name)
+                device_class = pci.get('device_class', 'PCI Device')
+                
+                cpe = self._generate_cpe(
+                    part='h',
+                    vendor=vendor,
+                    product=self._sanitize_cpe_value(pci_name),
+                    version='*',
+                )
+                
+                cpe_list.append({
+                    'type': f'Hardware - {device_class}',
+                    'name': pci_name,
+                    'vendor': vendor,
+                    'product': pci_name,
+                    'version': '*',
+                    'cpe': cpe,
+                })
+        
+        # System Devices (BIOS, Motherboard, etc.)
+        system_devices = hardware_info.get('system_devices', [])
+        for device in system_devices:
+            if 'error' not in device:
+                device_name = device.get('name', 'Unknown System Device')
+                device_type = device.get('type', 'System Device')
+                vendor = device.get('manufacturer', device.get('vendor', ''))
+                if not vendor:
+                    vendor = self._detect_hardware_vendor(device_name)
+                version = device.get('version', '*')
+                
+                cpe = self._generate_cpe(
+                    part='h',
+                    vendor=vendor,
+                    product=self._sanitize_cpe_value(device_name),
+                    version=version,
+                )
+                
+                cpe_list.append({
+                    'type': f'Hardware - {device_type}',
+                    'name': device_name,
+                    'vendor': vendor,
+                    'product': device_name,
+                    'version': version,
+                    'cpe': cpe,
+                })
+        
         return cpe_list
+    
+    def _detect_hardware_vendor(self, name):
+        """Detect hardware vendor from device name."""
+        if not name:
+            return 'unknown'
+        
+        name_lower = name.lower()
+        
+        # Direct vendor name mappings
+        vendor_keywords = {
+            'intel': 'intel',
+            'amd': 'amd',
+            'nvidia': 'nvidia',
+            'realtek': 'realtek',
+            'broadcom': 'broadcom',
+            'qualcomm': 'qualcomm',
+            'marvell': 'marvell',
+            'samsung': 'samsung',
+            'western digital': 'western_digital',
+            'seagate': 'seagate',
+            'sandisk': 'sandisk',
+            'kingston': 'kingston',
+            'corsair': 'corsair',
+            'asus': 'asus',
+            'msi': 'msi',
+            'gigabyte': 'gigabyte',
+            'asrock': 'asrock',
+            'dell': 'dell',
+            'hp': 'hp',
+            'lenovo': 'lenovo',
+            'acer': 'acer',
+            'apple': 'apple',
+            'microsoft': 'microsoft',
+            'logitech': 'logitech',
+            'razer': 'razer',
+            'creative': 'creative',
+            'conexant': 'conexant',
+            'via': 'via',
+            'linux foundation': 'linux',
+        }
+        
+        # Product/brand names that map to their parent vendor
+        product_to_vendor = {
+            'ati': 'amd',       # ATI is now AMD
+            'radeon': 'amd',   # Radeon is AMD product line
+            'geforce': 'nvidia',  # GeForce is NVIDIA product line
+        }
+        
+        # Check direct vendor keywords first
+        for keyword, vendor in vendor_keywords.items():
+            if keyword in name_lower:
+                return vendor
+        
+        # Check product-to-vendor mappings
+        for product, vendor in product_to_vendor.items():
+            if product in name_lower:
+                return vendor
+        
+        return 'unknown'
     
     def convert_software(self, software_list):
         """
