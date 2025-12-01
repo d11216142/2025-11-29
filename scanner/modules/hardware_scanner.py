@@ -11,6 +11,9 @@ import re
 class HardwareScanner:
     """Scanner for hardware device information."""
     
+    # DMI keys to extract from dmidecode output
+    DMI_KEYS = ['manufacturer', 'product_name', 'version', 'vendor', 'serial_number']
+    
     def __init__(self):
         self.hardware_info = {}
     
@@ -163,15 +166,17 @@ class HardwareScanner:
             try:
                 with open('/proc/driver/nvidia/version', 'r') as f:
                     version = f.read().strip()
+                    driver_version = version.split('\n')[0] if version else 'Unknown'
                     for gpu in gpu_info:
                         if 'NVIDIA' in gpu.get('name', '').upper():
-                            gpu['driver_version'] = version.split('\n')[0] if version else 'Unknown'
+                            gpu['driver_version'] = driver_version
             except (FileNotFoundError, IOError):
                 pass
                 
         elif system == 'Windows':
             try:
                 # Use WMIC to get GPU info
+                # CSV format: Node,AdapterRAM,DriverVersion,Name
                 result = subprocess.run(
                     ['wmic', 'path', 'win32_VideoController', 'get', 
                      'Name,AdapterRAM,DriverVersion', '/format:csv'],
@@ -180,11 +185,12 @@ class HardwareScanner:
                 if result.returncode == 0:
                     for line in result.stdout.strip().split('\n')[1:]:
                         parts = line.strip().split(',')
-                        if len(parts) >= 4 and parts[2]:
+                        # Expected format: Node,AdapterRAM,DriverVersion,Name (4 parts)
+                        if len(parts) >= 4 and parts[3]:
                             gpu_info.append({
-                                'name': parts[2],
+                                'name': parts[3],
                                 'memory_bytes': parts[1] if parts[1] else 'Unknown',
-                                'driver_version': parts[3] if len(parts) > 3 else 'Unknown',
+                                'driver_version': parts[2] if parts[2] else 'Unknown',
                                 'type': 'GPU',
                             })
             except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -261,6 +267,7 @@ class HardwareScanner:
                 
         elif system == 'Windows':
             try:
+                # CSV format: Node,Name,Status
                 result = subprocess.run(
                     ['wmic', 'sounddev', 'get', 'Name,Status', '/format:csv'],
                     capture_output=True, text=True, timeout=30
@@ -268,10 +275,11 @@ class HardwareScanner:
                 if result.returncode == 0:
                     for line in result.stdout.strip().split('\n')[1:]:
                         parts = line.strip().split(',')
-                        if len(parts) >= 2 and parts[1]:
+                        # Expected format: Node,Name,Status (3 parts)
+                        if len(parts) >= 3 and parts[1]:
                             audio_info.append({
                                 'name': parts[1],
-                                'status': parts[2] if len(parts) > 2 else 'Unknown',
+                                'status': parts[2] if parts[2] else 'Unknown',
                                 'type': 'Audio Device',
                             })
             except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -326,6 +334,7 @@ class HardwareScanner:
                 
         elif system == 'Windows':
             try:
+                # CSV format: Node,DeviceID,Name,Status
                 result = subprocess.run(
                     ['wmic', 'path', 'Win32_USBHub', 'get', 'Name,DeviceID,Status', '/format:csv'],
                     capture_output=True, text=True, timeout=30
@@ -333,11 +342,12 @@ class HardwareScanner:
                 if result.returncode == 0:
                     for line in result.stdout.strip().split('\n')[1:]:
                         parts = line.strip().split(',')
-                        if len(parts) >= 3 and parts[1]:
+                        # Expected format: Node,DeviceID,Name,Status (4 parts)
+                        if len(parts) >= 4 and parts[1]:
                             usb_info.append({
-                                'name': parts[2] if len(parts) > 2 else parts[1],
+                                'name': parts[2] if parts[2] else parts[1],
                                 'device_id': parts[1],
-                                'status': parts[3] if len(parts) > 3 else 'Unknown',
+                                'status': parts[3] if parts[3] else 'Unknown',
                                 'type': 'USB Hub',
                             })
                 
@@ -349,11 +359,12 @@ class HardwareScanner:
                 if result.returncode == 0:
                     for line in result.stdout.strip().split('\n')[1:]:
                         parts = line.strip().split(',')
-                        if len(parts) >= 3 and parts[1]:
+                        # Expected format: Node,DeviceID,Name,Status (4 parts)
+                        if len(parts) >= 4 and parts[1]:
                             usb_info.append({
-                                'name': parts[2] if len(parts) > 2 else parts[1],
+                                'name': parts[2] if parts[2] else parts[1],
                                 'device_id': parts[1],
-                                'status': parts[3] if len(parts) > 3 else 'Unknown',
+                                'status': parts[3] if parts[3] else 'Unknown',
                                 'type': 'USB Controller',
                             })
             except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -413,6 +424,7 @@ class HardwareScanner:
         elif system == 'Windows':
             try:
                 # Use wmic to get PCI devices via PnP entities
+                # CSV format: Node,DeviceID,Name,Status
                 result = subprocess.run(
                     ['wmic', 'path', 'Win32_PnPEntity', 'where', 
                      "DeviceID like 'PCI%'", 'get', 'Name,DeviceID,Status', '/format:csv'],
@@ -421,11 +433,12 @@ class HardwareScanner:
                 if result.returncode == 0:
                     for line in result.stdout.strip().split('\n')[1:]:
                         parts = line.strip().split(',')
-                        if len(parts) >= 3 and parts[1]:
+                        # Expected format: Node,DeviceID,Name,Status (4 parts)
+                        if len(parts) >= 4 and parts[1]:
                             pci_info.append({
                                 'device_id': parts[1],
-                                'name': parts[2] if len(parts) > 2 else 'Unknown',
-                                'status': parts[3] if len(parts) > 3 else 'Unknown',
+                                'name': parts[2] if parts[2] else 'Unknown',
+                                'status': parts[3] if parts[3] else 'Unknown',
                                 'type': 'PCI Device',
                             })
             except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -484,7 +497,7 @@ class HardwareScanner:
                                 key, value = line.split(':', 1)
                                 key = key.strip().lower().replace(' ', '_')
                                 value = value.strip()
-                                if value and key in ['manufacturer', 'product_name', 'version', 'vendor', 'serial_number']:
+                                if value and key in self.DMI_KEYS:
                                     info[key] = value
                         if len(info) > 1:  # Has more than just 'type'
                             # Create a name from available info

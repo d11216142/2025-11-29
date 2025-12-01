@@ -405,7 +405,7 @@ class CPEConverter:
         
         name_lower = name.lower()
         
-        # Common hardware vendors
+        # Direct vendor name mappings
         vendor_keywords = {
             'intel': 'intel',
             'amd': 'amd',
@@ -435,14 +435,24 @@ class CPEConverter:
             'creative': 'creative',
             'conexant': 'conexant',
             'via': 'via',
-            'ati': 'amd',  # ATI is now AMD
-            'radeon': 'amd',
-            'geforce': 'nvidia',
             'linux foundation': 'linux',
         }
         
+        # Product/brand names that map to their parent vendor
+        product_to_vendor = {
+            'ati': 'amd',       # ATI is now AMD
+            'radeon': 'amd',   # Radeon is AMD product line
+            'geforce': 'nvidia',  # GeForce is NVIDIA product line
+        }
+        
+        # Check direct vendor keywords first
         for keyword, vendor in vendor_keywords.items():
             if keyword in name_lower:
+                return vendor
+        
+        # Check product-to-vendor mappings
+        for product, vendor in product_to_vendor.items():
+            if product in name_lower:
                 return vendor
         
         return 'unknown'
