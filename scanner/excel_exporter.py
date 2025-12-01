@@ -2,6 +2,7 @@
 Excel Exporter Module
 Exports scanned system information to Excel format.
 """
+import re
 from datetime import datetime
 
 # Import openpyxl components - will be available if the package is installed
@@ -9,9 +10,12 @@ try:
     from openpyxl import Workbook
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
     from openpyxl.utils import get_column_letter
+    from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
     OPENPYXL_AVAILABLE = True
 except ImportError:
     OPENPYXL_AVAILABLE = False
+    # Fallback regex for illegal XML characters
+    ILLEGAL_CHARACTERS_RE = re.compile(r'[\000-\010]|[\013-\014]|[\016-\037]')
 
 
 class ExcelExporter:
@@ -19,6 +23,29 @@ class ExcelExporter:
     
     def __init__(self):
         self.workbook = None
+    
+    def _sanitize_value(self, value):
+        """
+        Sanitize a value by removing illegal XML characters.
+        
+        Args:
+            value: The value to sanitize
+            
+        Returns:
+            Tuple of (sanitized_value, had_illegal_chars)
+        """
+        if value is None:
+            return ('', False)
+        
+        str_value = str(value)
+        
+        # Check if there are any illegal characters
+        if ILLEGAL_CHARACTERS_RE.search(str_value):
+            # Remove illegal characters
+            sanitized = ILLEGAL_CHARACTERS_RE.sub('', str_value)
+            return (sanitized, True)
+        
+        return (str_value, False)
     
     def export(self, cpe_data, output_file='system_scan_report.xlsx'):
         """
@@ -53,8 +80,8 @@ class ExcelExporter:
             bottom=Side(style='thin')
         )
         
-        # Define headers
-        headers = ['Type', 'Name', 'Vendor', 'Product', 'Version', 'CPE']
+        # Define headers (added Notes column for illegal character handling)
+        headers = ['Type', 'Name', 'Vendor', 'Product', 'Version', 'CPE', 'Notes']
         
         # Write headers
         for col, header in enumerate(headers, 1):
@@ -66,14 +93,21 @@ class ExcelExporter:
         
         # Write data
         for row, item in enumerate(cpe_data, 2):
-            ws.cell(row=row, column=1, value=item.get('type', '')).border = thin_border
-            ws.cell(row=row, column=2, value=item.get('name', '')).border = thin_border
-            ws.cell(row=row, column=3, value=item.get('vendor', '')).border = thin_border
-            ws.cell(row=row, column=4, value=item.get('product', '')).border = thin_border
-            ws.cell(row=row, column=5, value=item.get('version', '')).border = thin_border
-            ws.cell(row=row, column=6, value=item.get('cpe', '')).border = thin_border
+            row_had_illegal_chars = False
             
-            for col in range(1, 7):
+            # Sanitize and write each field
+            fields = ['type', 'name', 'vendor', 'product', 'version', 'cpe']
+            for col, field in enumerate(fields, 1):
+                value, had_illegal = self._sanitize_value(item.get(field, ''))
+                if had_illegal:
+                    row_had_illegal_chars = True
+                ws.cell(row=row, column=col, value=value).border = thin_border
+            
+            # Add note if illegal characters were removed
+            note = "Illegal characters removed" if row_had_illegal_chars else ""
+            ws.cell(row=row, column=7, value=note).border = thin_border
+            
+            for col in range(1, 8):
                 ws.cell(row=row, column=col).alignment = cell_alignment
         
         # Adjust column widths
@@ -84,6 +118,7 @@ class ExcelExporter:
             4: 40,   # Product
             5: 30,   # Version
             6: 80,   # CPE
+            7: 25,   # Notes
         }
         
         for col, width in column_widths.items():
@@ -197,7 +232,7 @@ class ExcelExporter:
     
     def _write_cpe_sheet(self, ws, cpe_data, header_font, header_fill):
         """Write CPE data to worksheet."""
-        headers = ['Type', 'Name', 'Vendor', 'Product', 'Version', 'CPE']
+        headers = ['Type', 'Name', 'Vendor', 'Product', 'Version', 'CPE', 'Notes']
         
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
@@ -205,15 +240,22 @@ class ExcelExporter:
             cell.fill = header_fill
         
         for row, item in enumerate(cpe_data, 2):
-            ws.cell(row=row, column=1, value=item.get('type', ''))
-            ws.cell(row=row, column=2, value=item.get('name', ''))
-            ws.cell(row=row, column=3, value=item.get('vendor', ''))
-            ws.cell(row=row, column=4, value=item.get('product', ''))
-            ws.cell(row=row, column=5, value=item.get('version', ''))
-            ws.cell(row=row, column=6, value=item.get('cpe', ''))
+            row_had_illegal_chars = False
+            
+            # Sanitize and write each field
+            fields = ['type', 'name', 'vendor', 'product', 'version', 'cpe']
+            for col, field in enumerate(fields, 1):
+                value, had_illegal = self._sanitize_value(item.get(field, ''))
+                if had_illegal:
+                    row_had_illegal_chars = True
+                ws.cell(row=row, column=col, value=value)
+            
+            # Add note if illegal characters were removed
+            note = "Illegal characters removed" if row_had_illegal_chars else ""
+            ws.cell(row=row, column=7, value=note)
         
         # Adjust widths
-        widths = [25, 40, 20, 40, 30, 80]
+        widths = [25, 40, 20, 40, 30, 80, 25]
         for i, width in enumerate(widths, 1):
             ws.column_dimensions[get_column_letter(i)].width = width
     
@@ -223,15 +265,24 @@ class ExcelExporter:
         ws.cell(row=1, column=1).fill = header_fill
         ws.cell(row=1, column=2, value="Value").font = header_font
         ws.cell(row=1, column=2).fill = header_fill
+        ws.cell(row=1, column=3, value="Notes").font = header_font
+        ws.cell(row=1, column=3).fill = header_fill
         
         row = 2
         for key, value in os_info.items():
-            ws.cell(row=row, column=1, value=key)
-            ws.cell(row=row, column=2, value=str(value))
+            key_sanitized, key_had_illegal = self._sanitize_value(key)
+            value_sanitized, value_had_illegal = self._sanitize_value(value)
+            
+            ws.cell(row=row, column=1, value=key_sanitized)
+            ws.cell(row=row, column=2, value=value_sanitized)
+            
+            note = "Illegal characters removed" if (key_had_illegal or value_had_illegal) else ""
+            ws.cell(row=row, column=3, value=note)
             row += 1
         
         ws.column_dimensions['A'].width = 20
         ws.column_dimensions['B'].width = 50
+        ws.column_dimensions['C'].width = 25
     
     def _write_hardware_sheet(self, ws, hardware_info, header_font, header_fill):
         """Write hardware information to worksheet."""
@@ -241,31 +292,49 @@ class ExcelExporter:
         ws.cell(row=1, column=2).fill = header_fill
         ws.cell(row=1, column=3, value="Value").font = header_font
         ws.cell(row=1, column=3).fill = header_fill
+        ws.cell(row=1, column=4, value="Notes").font = header_font
+        ws.cell(row=1, column=4).fill = header_fill
         
         row = 2
         for component, data in hardware_info.items():
             if isinstance(data, dict):
                 for key, value in data.items():
-                    ws.cell(row=row, column=1, value=component.upper())
-                    ws.cell(row=row, column=2, value=key)
-                    ws.cell(row=row, column=3, value=str(value))
+                    comp_sanitized, comp_had_illegal = self._sanitize_value(component.upper())
+                    key_sanitized, key_had_illegal = self._sanitize_value(key)
+                    value_sanitized, value_had_illegal = self._sanitize_value(value)
+                    
+                    ws.cell(row=row, column=1, value=comp_sanitized)
+                    ws.cell(row=row, column=2, value=key_sanitized)
+                    ws.cell(row=row, column=3, value=value_sanitized)
+                    
+                    note = "Illegal characters removed" if (comp_had_illegal or key_had_illegal or value_had_illegal) else ""
+                    ws.cell(row=row, column=4, value=note)
                     row += 1
             elif isinstance(data, list):
                 for i, item in enumerate(data):
                     if isinstance(item, dict):
                         for key, value in item.items():
-                            ws.cell(row=row, column=1, value=f"{component.upper()} #{i+1}")
-                            ws.cell(row=row, column=2, value=key)
-                            ws.cell(row=row, column=3, value=str(value))
+                            comp_name = f"{component.upper()} #{i+1}"
+                            comp_sanitized, comp_had_illegal = self._sanitize_value(comp_name)
+                            key_sanitized, key_had_illegal = self._sanitize_value(key)
+                            value_sanitized, value_had_illegal = self._sanitize_value(value)
+                            
+                            ws.cell(row=row, column=1, value=comp_sanitized)
+                            ws.cell(row=row, column=2, value=key_sanitized)
+                            ws.cell(row=row, column=3, value=value_sanitized)
+                            
+                            note = "Illegal characters removed" if (comp_had_illegal or key_had_illegal or value_had_illegal) else ""
+                            ws.cell(row=row, column=4, value=note)
                             row += 1
         
         ws.column_dimensions['A'].width = 20
         ws.column_dimensions['B'].width = 20
         ws.column_dimensions['C'].width = 50
+        ws.column_dimensions['D'].width = 25
     
     def _write_software_sheet(self, ws, software_list, header_font, header_fill):
         """Write software list to worksheet."""
-        headers = ['Name', 'Version', 'Vendor', 'Type']
+        headers = ['Name', 'Version', 'Vendor', 'Type', 'Notes']
         
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
@@ -274,15 +343,23 @@ class ExcelExporter:
         
         for row, software in enumerate(software_list, 2):
             if 'error' not in software:
-                ws.cell(row=row, column=1, value=software.get('name', ''))
-                ws.cell(row=row, column=2, value=software.get('version', ''))
-                ws.cell(row=row, column=3, value=software.get('vendor', ''))
-                ws.cell(row=row, column=4, value=software.get('type', ''))
+                row_had_illegal_chars = False
+                
+                fields = ['name', 'version', 'vendor', 'type']
+                for col, field in enumerate(fields, 1):
+                    value, had_illegal = self._sanitize_value(software.get(field, ''))
+                    if had_illegal:
+                        row_had_illegal_chars = True
+                    ws.cell(row=row, column=col, value=value)
+                
+                note = "Illegal characters removed" if row_had_illegal_chars else ""
+                ws.cell(row=row, column=5, value=note)
         
         ws.column_dimensions['A'].width = 50
         ws.column_dimensions['B'].width = 30
         ws.column_dimensions['C'].width = 30
         ws.column_dimensions['D'].width = 15
+        ws.column_dimensions['E'].width = 25
     
     def _write_summary_sheet(self, ws, os_info, hardware_info, software_list, cpe_data, header_font, header_fill):
         """Write summary to worksheet."""
@@ -293,7 +370,8 @@ class ExcelExporter:
         ws.cell(row=3, column=2, value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         
         ws.cell(row=5, column=1, value="Operating System:").font = Font(bold=True)
-        ws.cell(row=5, column=2, value=os_info.get('platform', 'Unknown'))
+        platform_value, _ = self._sanitize_value(os_info.get('platform', 'Unknown'))
+        ws.cell(row=5, column=2, value=platform_value)
         
         ws.cell(row=7, column=1, value="Statistics:").font = Font(bold=True, size=12)
         ws.cell(row=8, column=1, value="Total CPE Entries:")
