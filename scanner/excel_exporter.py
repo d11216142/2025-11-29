@@ -14,12 +14,15 @@ try:
     OPENPYXL_AVAILABLE = True
 except ImportError:
     OPENPYXL_AVAILABLE = False
-    # Fallback regex for illegal XML characters
-    ILLEGAL_CHARACTERS_RE = re.compile(r'[\000-\010]|[\013-\014]|[\016-\037]')
+    # Fallback regex for illegal XML characters (control characters not allowed in XML)
+    ILLEGAL_CHARACTERS_RE = re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F]')
 
 
 class ExcelExporter:
     """Exporter for system information to Excel format."""
+    
+    # Note message for cells with removed illegal characters
+    ILLEGAL_CHARS_NOTE = "Illegal characters removed"
     
     def __init__(self):
         self.workbook = None
@@ -104,7 +107,7 @@ class ExcelExporter:
                 ws.cell(row=row, column=col, value=value).border = thin_border
             
             # Add note if illegal characters were removed
-            note = "Illegal characters removed" if row_had_illegal_chars else ""
+            note = self.ILLEGAL_CHARS_NOTE if row_had_illegal_chars else ""
             ws.cell(row=row, column=7, value=note).border = thin_border
             
             for col in range(1, 8):
@@ -251,7 +254,7 @@ class ExcelExporter:
                 ws.cell(row=row, column=col, value=value)
             
             # Add note if illegal characters were removed
-            note = "Illegal characters removed" if row_had_illegal_chars else ""
+            note = self.ILLEGAL_CHARS_NOTE if row_had_illegal_chars else ""
             ws.cell(row=row, column=7, value=note)
         
         # Adjust widths
@@ -276,7 +279,7 @@ class ExcelExporter:
             ws.cell(row=row, column=1, value=key_sanitized)
             ws.cell(row=row, column=2, value=value_sanitized)
             
-            note = "Illegal characters removed" if (key_had_illegal or value_had_illegal) else ""
+            note = self.ILLEGAL_CHARS_NOTE if (key_had_illegal or value_had_illegal) else ""
             ws.cell(row=row, column=3, value=note)
             row += 1
         
@@ -307,7 +310,7 @@ class ExcelExporter:
                     ws.cell(row=row, column=2, value=key_sanitized)
                     ws.cell(row=row, column=3, value=value_sanitized)
                     
-                    note = "Illegal characters removed" if (comp_had_illegal or key_had_illegal or value_had_illegal) else ""
+                    note = self.ILLEGAL_CHARS_NOTE if (comp_had_illegal or key_had_illegal or value_had_illegal) else ""
                     ws.cell(row=row, column=4, value=note)
                     row += 1
             elif isinstance(data, list):
@@ -323,7 +326,7 @@ class ExcelExporter:
                             ws.cell(row=row, column=2, value=key_sanitized)
                             ws.cell(row=row, column=3, value=value_sanitized)
                             
-                            note = "Illegal characters removed" if (comp_had_illegal or key_had_illegal or value_had_illegal) else ""
+                            note = self.ILLEGAL_CHARS_NOTE if (comp_had_illegal or key_had_illegal or value_had_illegal) else ""
                             ws.cell(row=row, column=4, value=note)
                             row += 1
         
@@ -352,7 +355,7 @@ class ExcelExporter:
                         row_had_illegal_chars = True
                     ws.cell(row=row, column=col, value=value)
                 
-                note = "Illegal characters removed" if row_had_illegal_chars else ""
+                note = self.ILLEGAL_CHARS_NOTE if row_had_illegal_chars else ""
                 ws.cell(row=row, column=5, value=note)
         
         ws.column_dimensions['A'].width = 50
